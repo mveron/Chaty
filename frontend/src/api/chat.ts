@@ -14,6 +14,12 @@ export interface IngestResult {
   persist_dir: string;
 }
 
+export interface IngestUploadResult {
+  uploaded_files: string[];
+  rejected_files: string[];
+  ingest: IngestResult;
+}
+
 const PROVIDER_HOST_SUFFIXES = ["ollama.com", "openai.com", "openai.vocareum.com"];
 
 function normalizeBackendUrl(rawBaseUrl: string): string {
@@ -135,4 +141,33 @@ export const triggerIngest = async (baseUrl: string, force = false): Promise<Ing
     throw new Error(detail);
   }
   return (await response.json()) as IngestResult;
+};
+
+export const uploadIngestFiles = async (baseUrl: string, files: File[]): Promise<IngestUploadResult> => {
+  if (!files.length) {
+    throw new Error("Please select at least one .txt or .pdf file.");
+  }
+  const backendBaseUrl = normalizeBackendUrl(baseUrl);
+  const formData = new FormData();
+  for (const file of files) {
+    formData.append("files", file);
+  }
+
+  const response = await fetch(`${backendBaseUrl}/ingest/upload`, {
+    method: "POST",
+    body: formData,
+  });
+  if (!response.ok) {
+    let detail = "Upload failed";
+    try {
+      const payload = (await response.json()) as { detail?: string };
+      if (payload.detail) {
+        detail = payload.detail;
+      }
+    } catch {
+      // Ignore parse failures and keep default message.
+    }
+    throw new Error(detail);
+  }
+  return (await response.json()) as IngestUploadResult;
 };

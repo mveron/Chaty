@@ -374,10 +374,27 @@ textarea {
   align-items: center;
 }
 
-.icon-btn,
+.upload-btn,
 .send-btn {
   border: 0;
   border-radius: 10px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.upload-btn {
+  min-width: 76px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  background: var(--surface-subtle);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.send-btn {
   width: 36px;
   height: 36px;
   display: grid;
@@ -385,9 +402,9 @@ textarea {
   cursor: pointer;
 }
 
-.icon-btn {
-  background: var(--surface-subtle);
-  color: var(--muted);
+.upload-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 .send-btn {

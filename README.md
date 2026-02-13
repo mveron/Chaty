@@ -4,7 +4,7 @@ RAG chatbot with:
 - Frontend: React 18 + Vite 5
 - Backend: FastAPI + LangChain v1
 - LLM/embeddings: OpenAI-compatible API
-- Ingestion source folder: `ingest/` (`.txt` files)
+- Ingestion source folder: `ingest/` (`.txt` and `.pdf` files)
 
 The UI was generated with Google Stitch MCP as a web desktop workspace and implemented in React from that design:
 - Stitch project: `projects/14033143330943928384`
@@ -43,7 +43,7 @@ The UI was generated with Google Stitch MCP as a web desktop workspace and imple
 
 ## Project Structure
 
-- `ingest/`: drop `.txt` files to index
+- `ingest/`: drop `.txt` and `.pdf` files to index
 - `backend/`: FastAPI + RAG logic
 - `frontend/`: React chatbot UI
 
@@ -86,6 +86,10 @@ Request:
 { "force": false }
 ```
 
+### `POST /ingest/upload` (multipart/form-data)
+Form field:
+- `files`: one or more `.txt` / `.pdf` files
+
 ### `POST /chat` (SSE)
 Request:
 ```json
@@ -105,8 +109,9 @@ SSE events:
 
 ## Ingestion Behavior
 
-- Scans `ingest/**/*.txt`
-- Auto-ingests at backend startup (non-fatal if Ollama unavailable)
+- Scans `ingest/**/*.txt` and `ingest/**/*.pdf`
+- Auto-ingests at backend startup (non-fatal if API is unavailable)
+- UI upload button (`+`) sends files to backend and triggers ingest automatically
 - Manual ingest via `POST /ingest`
 - Uses SHA256 manifest (`backend/data/ingest_manifest.json`) to skip unchanged files
 - Removes vectors for files deleted from `ingest/`

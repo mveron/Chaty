@@ -7,12 +7,14 @@ from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from openai import AuthenticationError
 from openai import APIStatusError
+from pypdf import PdfReader
 
 from app.config import settings
 from app.rag.retriever import COLLECTION_NAME, get_vectorstore
 from app.schemas import IngestResponse
 
 logger = logging.getLogger(__name__)
+SUPPORTED_INGEST_EXTENSIONS = {".txt", ".pdf"}
 
 
 def _sha256_file(path: Path) -> str:
@@ -86,6 +88,31 @@ def _has_persisted_vectors(vectorstore, doc_ids: list[str]) -> bool:
     return bool(persisted_ids)
 
 
+def _iter_ingest_files() -> list[Path]:
+    files = [
+        path
+        for path in settings.ingest_dir.rglob("*")
+        if path.is_file() and path.suffix.lower() in SUPPORTED_INGEST_EXTENSIONS
+    ]
+    return sorted(files)
+
+
+def _extract_file_text(file_path: Path) -> str:
+    file_extension = file_path.suffix.lower()
+    if file_extension == ".txt":
+        return file_path.read_text(encoding="utf-8", errors="ignore")
+    if file_extension == ".pdf":
+        reader = PdfReader(str(file_path))
+        if reader.is_encrypted:
+            try:
+                reader.decrypt("")
+            except Exception as exc:
+                raise ValueError("encrypted PDF is not supported") from exc
+        pages_text = [(page.extract_text() or "").strip() for page in reader.pages]
+        return "\n\n".join([page for page in pages_text if page])
+    raise ValueError(f"unsupported file type: {file_extension}")
+
+
 def ingest_documents(force: bool = False) -> IngestResponse:
     settings.ingest_dir.mkdir(parents=True, exist_ok=True)
     vectorstore = get_vectorstore()
@@ -100,7 +127,7 @@ def ingest_documents(force: bool = False) -> IngestResponse:
     discovered_rel_paths: set[str] = set()
     can_use_remote_embeddings = True
 
-    for file_path in sorted(settings.ingest_dir.rglob("*.txt")):
+    for file_path in _iter_ingest_files():
         rel_path = file_path.relative_to(settings.root_dir).as_posix()
         discovered_rel_paths.add(rel_path)
         file_hash = _sha256_file(file_path)
@@ -112,7 +139,14 @@ def ingest_documents(force: bool = False) -> IngestResponse:
             skipped_files.append(rel_path)
             continue
 
-        text = file_path.read_text(encoding="utf-8", errors="ignore")
+        try:
+            text = _extract_file_text(file_path)
+        except Exception as exc:
+            logger.warning("Skipping '%s': %s", rel_path, exc)
+            skipped_files.append(rel_path)
+            tracked_files[rel_path] = {"sha256": file_hash, "doc_ids": previous_ids}
+            continue
+
         if not text.strip():
             skipped_files.append(rel_path)
             tracked_files[rel_path] = {"sha256": file_hash, "doc_ids": []}

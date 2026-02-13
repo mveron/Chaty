@@ -13,6 +13,12 @@ class IngestResponse(BaseModel):
     persist_dir: str
 
 
+class IngestUploadResponse(BaseModel):
+    uploaded_files: list[str]
+    rejected_files: list[str]
+    ingest: IngestResponse
+
+
 class ChatRequest(BaseModel):
     session_id: str = Field(min_length=1)
     message: str = Field(min_length=1)

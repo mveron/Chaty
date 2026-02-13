@@ -1,9 +1,13 @@
 import json
 import logging
+import shutil
 from collections.abc import AsyncGenerator
+from pathlib import Path
 
+from fastapi import File
 from fastapi import FastAPI
 from fastapi import HTTPException
+from fastapi import UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from openai import AuthenticationError
@@ -13,11 +17,12 @@ from openai import APIStatusError
 from app.config import settings
 from app.rag.chain import stream_chat_answer
 from app.rag.ingest import ingest_documents
-from app.schemas import ChatRequest, IngestRequest, IngestResponse
+from app.schemas import ChatRequest, IngestRequest, IngestResponse, IngestUploadResponse
 from app.sessions import session_store
 
 app = FastAPI(title="Chaty RAG Backend", version="1.0.0")
 logger = logging.getLogger(__name__)
+SUPPORTED_UPLOAD_EXTENSIONS = {".txt", ".pdf"}
 
 app.add_middleware(
     CORSMiddleware,
@@ -41,10 +46,9 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@app.post("/ingest", response_model=IngestResponse)
-def ingest(payload: IngestRequest) -> IngestResponse:
+def _run_ingest(force: bool) -> IngestResponse:
     try:
-        return ingest_documents(force=payload.force)
+        return ingest_documents(force=force)
     except APIConnectionError as exc:
         raise HTTPException(
             status_code=502,
@@ -67,6 +71,46 @@ def ingest(payload: IngestRequest) -> IngestResponse:
                 ),
             ) from exc
         raise
+
+
+@app.post("/ingest", response_model=IngestResponse)
+def ingest(payload: IngestRequest) -> IngestResponse:
+    return _run_ingest(force=payload.force)
+
+
+@app.post("/ingest/upload", response_model=IngestUploadResponse)
+async def ingest_upload(files: list[UploadFile] = File(...)) -> IngestUploadResponse:
+    settings.ingest_dir.mkdir(parents=True, exist_ok=True)
+    uploaded_files: list[str] = []
+    rejected_files: list[str] = []
+
+    for incoming in files:
+        incoming_name = incoming.filename or ""
+        safe_name = Path(incoming_name).name
+        file_extension = Path(safe_name).suffix.lower()
+        if not safe_name or file_extension not in SUPPORTED_UPLOAD_EXTENSIONS:
+            rejected_files.append(incoming_name or "<unnamed>")
+            await incoming.close()
+            continue
+
+        destination = settings.ingest_dir / safe_name
+        with destination.open("wb") as target_file:
+            shutil.copyfileobj(incoming.file, target_file)
+        uploaded_files.append(f"ingest/{safe_name}")
+        await incoming.close()
+
+    if not uploaded_files:
+        raise HTTPException(
+            status_code=400,
+            detail="No valid files uploaded. Supported extensions: .txt, .pdf.",
+        )
+
+    ingest_result = _run_ingest(force=False)
+    return IngestUploadResponse(
+        uploaded_files=uploaded_files,
+        rejected_files=rejected_files,
+        ingest=ingest_result,
+    )
 
 
 def _to_sse(event: str, data: dict) -> str:

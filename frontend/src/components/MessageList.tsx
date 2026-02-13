@@ -35,7 +35,7 @@ export function MessageList({ messages }: MessageListProps) {
       {messages.length === 0 && (
         <div className="chat-placeholder">
           <h2>Chaty RAG</h2>
-          <p>Drop `.txt` files into `ingest/`, run reindex, then ask document questions.</p>
+          <p>Drop `.txt` or `.pdf` files into `ingest/`, run reindex, then ask document questions.</p>
         </div>
       )}
     </section>

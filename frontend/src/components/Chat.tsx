@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { streamChat, triggerIngest } from "../api/chat";
+import { streamChat, triggerIngest, uploadIngestFiles } from "../api/chat";
 import type { SourceItem } from "../api/chat";
 import { Composer } from "./Composer";
 import { MessageList } from "./MessageList";
@@ -59,6 +59,7 @@ export function Chat() {
   const [sources, setSources] = useState<SourceItem[]>([]);
   const [busy, setBusy] = useState(false);
   const [ingesting, setIngesting] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [lastReindexAt, setLastReindexAt] = useState<string | null>(null);
@@ -172,6 +173,25 @@ export function Chat() {
     setLocal("chaty.temperature", sanitized);
   };
 
+  const handleUploadFiles = async (files: File[]) => {
+    setUploading(true);
+    setError(null);
+    setStatus(null);
+    try {
+      const result = await uploadIngestFiles(apiBaseUrl, files);
+      const ingestResult = result.ingest;
+      setStatus(
+        `Uploaded ${result.uploaded_files.length} file(s), rejected ${result.rejected_files.length}. ` +
+          `Indexed ${ingestResult.indexed_files.length}, skipped ${ingestResult.skipped_files.length}, chunks ${ingestResult.total_chunks_added}.`
+      );
+      setLastReindexAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+    } catch (uploadError) {
+      setError((uploadError as Error).message);
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const handleToggleTheme = () => {
     setTheme((current) => (current === "dark" ? "light" : "dark"));
   };
@@ -202,7 +222,7 @@ export function Chat() {
         {error && <div className="error">{error}</div>}
         {status && <div className="status">{status}</div>}
         <MessageList messages={messages} />
-        <Composer onSend={handleSend} disabled={busy} />
+        <Composer onSend={handleSend} onUploadFiles={handleUploadFiles} disabled={busy} uploading={uploading} />
       </main>
       <SourcesPanel sources={sources} />
     </div>
